@@ -1,0 +1,104 @@
+                                      1 ;
+                                      2 ; CeePCee v0.8alpha Amstrad CPC Plus and GX4000 SDK
+                                      3 ; 2026 Johnny Blanchard
+                                      4 ;
+                                      5 ; NB: It's called GX4000 but it's for the whole plus range.
+                                      6 ;
+                                      7 ; crt0_gx4000.s
+                                      8 ; CRT0 for CPC+ / GX4000 cartridge
+                                      9 ;
+                                     10 ; CPR layout (handled by sjasmplus packer, not SDCC):
+                                     11 ;   ROM bank 0 $0000-$3FFF : this CRT0 stub (just hardware init + jump to $A000)
+                                     12 ;   ROM bank 0 $A000+      : SDCC-linked game code + library (incbin of .bin)
+                                     13 ;
+                                     14 ; RAM layout at runtime:
+                                     15 ;   $A000-$BFFF : game code + library data (copied from ROM by sjasmplus ldir stub)
+                                     16 ;   $C000-$FFFF : screen RAM
+                                     17 ;   $4000-$7FFF : ASIC register window (paged in/out as needed)
+                                     18 ;
+                                     19 ; SDCC link target: --code-loc 0xA000 --data-loc 0xA000
+                                     20 ; The SDCC binary is a flat image starting at $A000.
+                                     21 ; sjasmplus packs it into the CPR and adds the copy stub.
+                                     22 ;
+                                     23 ; This CRT0 is assembled by sdasz80 and linked into the SDCC binary.
+                                     24 ; At link time SDCC places _HEADER at --code-loc (0xA000), so the
+                                     25 ; entire output starts with this CRT0 code at $A000.
+                                     26 ; The sjasmplus packer copies the entire bank0 image to RAM $A000 then
+                                     27 ; falls through to this code.
+                                     28 ;
+                                     29 
+                                     30     .module crt0_gx4000
+                                     31     .globl  _main
+                                     32     .globl  _cpc_runtime_init
+                                     33     .globl  s__INITIALIZED
+                                     34     .globl  s__INITIALIZER
+                                     35     .globl  l__INITIALIZED
+                                     36     .globl  s__DATA
+                                     37     .globl  l__DATA
+                                     38 
+                                     39     .area   _CODE
+                                     40 
+                                     41 ;==============================================================================
+                                     42 ; Entry point at $A000. crt0.rel is linked first so these bytes appear at
+                                     43 ; the very start of _CODE = $A000. _main follows in _CODE after this stub.
+                                     44 ;==============================================================================
+    00000000                         45 crt0_entry::
+    00000000 F3               [ 4]   46     di
+    00000001 ED 56            [ 8]   47     im      1
+    00000003 31 FE BF         [10]   48     ld      sp, #0xBFFE
+                                     49 
+                                     50     ; Zero _DATA (uninitialised statics - SDCC puts them here on Z80, not _BSS)
+    00000006 01r00r00         [10]   51     ld      bc, #l__DATA
+    00000009 78               [ 4]   52     ld      a, b
+    0000000A B1               [ 4]   53     or      c
+    0000000B 28 0F            [12]   54     jr      z, 00003$
+    0000000D 21r00r00         [10]   55     ld      hl, #s__DATA
+    00000010 36 00            [10]   56     ld      (hl), #0
+    00000012 0B               [ 6]   57     dec     bc
+    00000013 78               [ 4]   58     ld      a, b
+    00000014 B1               [ 4]   59     or      c
+    00000015 28 05            [12]   60     jr      z, 00003$
+    00000017 11r01r00         [10]   61     ld      de, #s__DATA + 1
+    0000001A ED B0            [21]   62     ldir
+    0000001C                         63 00003$:
+                                     64 
+                                     65     ; Copy initialised data from ROM (_INITIALIZER) to RAM (_INITIALIZED)
+    0000001C 01r00r00         [10]   66     ld      bc, #l__INITIALIZED
+    0000001F 78               [ 4]   67     ld      a, b
+    00000020 B1               [ 4]   68     or      c
+    00000021 28 08            [12]   69     jr      z, 00001$
+    00000023 21r00r00         [10]   70     ld      hl, #s__INITIALIZER
+    00000026 11r00r00         [10]   71     ld      de, #s__INITIALIZED
+    00000029 ED B0            [21]   72     ldir
+    0000002B                         73 00001$:
+                                     74 
+                                     75     ; Zero BSS
+    0000002B 01r00r00         [10]   76     ld      bc, #l__BSS
+    0000002E 78               [ 4]   77     ld      a, b
+    0000002F B1               [ 4]   78     or      c
+    00000030 28 0F            [12]   79     jr      z, 00002$
+    00000032 21r00r00         [10]   80     ld      hl, #s__BSS
+    00000035 36 00            [10]   81     ld      (hl), #0
+    00000037 0B               [ 6]   82     dec     bc
+    00000038 78               [ 4]   83     ld      a, b
+    00000039 B1               [ 4]   84     or      c
+    0000003A 28 05            [12]   85     jr      z, 00002$
+    0000003C 11r01r00         [10]   86     ld      de, #s__BSS + 1
+    0000003F ED B0            [21]   87     ldir
+    00000041                         88 00002$:
+                                     89 
+    00000041 CDr00r00         [17]   90     call    _cpc_runtime_init
+    00000044 C3r00r00         [10]   91     jp      _main
+                                     92 
+                                     93 ; Fallback BSS symbols - used only if no _BSS section exists in the program.
+                                     94 ; When a real _BSS section is present the linker uses those symbols instead.
+                                     95     .area   _BSS
+    00000000                         96 s__BSS_fallback::
+    00000000                         97     .ds     0
+                                     98 
+                                     99     .area   _GSINIT
+    00000000                        100 __sdcc_gsinit_startup::
+    00000000 C9               [10]  101     ret
+                                    102 
+                                    103     .area   _GSFINAL
+    00000000 C9               [10]  104     ret

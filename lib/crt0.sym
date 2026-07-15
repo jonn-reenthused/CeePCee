@@ -1,0 +1,22 @@
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180 / ZX-Next / eZ80 / R800)                          Page 1
+Hexadecimal [32-Bits]
+
+Symbol Table
+
+    .__.$$$.=   00002710 L   |     .__.ABS.=   00000000 G   |     .__.CPU.=   00000000 L
+    .__.H$L.=   00000000 L   |   2 __sdcc_g    00000000 GR  |     _cpc_run    ******** GX
+    _main       ******** GX  |   0 crt0_ent    00000000 GR  |     l__BSS      ******** GX
+    l__DATA     ******** GX  |     l__INITI    ******** GX  |     s__BSS      ******** GX
+  1 s__BSS_f    00000000 GR  |     s__DATA     ******** GX  |     s__INITI    ******** GX
+    s__INITI    ******** GX
+
+ASxxxx Assembler V02.00 + NoICE + SDCC mods  (Zilog Z80 / Hitachi HD64180 / ZX-Next / eZ80 / R800)                          Page 2
+Hexadecimal [32-Bits]
+
+Area Table
+
+   0 _CODE      size       47   flags    0
+   1 _BSS       size        0   flags    0
+   2 _GSINIT    size        1   flags    0
+   3 _GSFINAL   size        1   flags    0
+
