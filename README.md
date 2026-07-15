@@ -1,6 +1,7 @@
 # CeePCee
 
 An SDK for the Amstrad CPC Plus and GX4000
+This is technically V2 of the SDK, V1 I was trying to create my own ecosystem with it's own compiler and ended up fighting compiler bugs and not making much progress with the SDK, so V2 became a library for SDCC instead.
 
 This is very incomplete, before we go through what IS working, let's talk about what isn't.  And there are other ways of making CPC+ software, for instance there's a branch of CPCTelera that can do it. I had a lot of issues getting it working for me, but I know other people have had a lot of success and, at this point in time, CPCTelera is probably the better option, because more is working. But I think CeePCee will be more usable across more systems.
 
@@ -32,22 +33,22 @@ This is very incomplete, before we go through what IS working, let's talk about 
 
 There are a number of examples in the samples folder. These have been made over the course of developing the SDK so some of them aren't written in the right way, such as not using the sdk's init function and, instead, using inline assembler to initialise.  I'll have to go back over some of the older examples to fix them.
 
-But they all should work.
+But they all should work (with the caveat of, except for stuff that isn't working in the SDK).
 
 ## Building the Library
 
 ```sh
-make -C V2
+make
 ```
 
-Produces `V2/lib/ceepcee.lib`.
+Produces `./lib/ceepcee.lib`.
 
 ## Building a Game
 
 ```sh
-sdcc -mz80 --no-std-crt0 -I V2/include \
+sdcc -mz80 --no-std-crt0 -I ./include \
      --code-loc 0xA000 --data-loc 0xA000 \
-     game.c V2/lib/crt0.rel V2/lib/ceepcee.lib \
+     game.c ./lib/crt0.rel ./lib/ceepcee.lib \
      -o game.ihx
 ```
 
