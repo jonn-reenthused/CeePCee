@@ -23,6 +23,7 @@ This is very incomplete, before we go through what IS working, let's talk about 
 - Text works
 - It'll build a working cartridge
 - Works on any system that can run SDCC (i've tested with 4.5.0), sjasmplus (1.18.2), sdasz80 (02.00) and sdar (2.38).
+- Whilst i'm still keeping it as a TODO, i've added a very simple raster effect and changed the sample to use it
 
 ## Prerequisites
 - python3
