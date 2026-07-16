@@ -6,7 +6,7 @@ This is technically V2 of the SDK, V1 I was trying to create my own ecosystem wi
 This is very incomplete, before we go through what IS working, let's talk about what isn't.  And there are other ways of making CPC+ software, for instance there's a branch of CPCTelera that can do it. I had a lot of issues getting it working for me, but I know other people have had a lot of success and, at this point in time, CPCTelera is probably the better option, because more is working. But I think CeePCee will be more usable across more systems.
 
 ## TODOs:
-- Sound is not working, pretty much at all. I tried to create a simple enough to use SFX system and a pipeline for getting MIDIs to work, but I just couldn't get it working, at the moment at least.
+- Sound isn't perfect
 - Scrolling backgrounds are broken. I've never had much success getting them to work on the CPC+ in the past either.
 - Text is "iffy". It mostly works, but to make the text transparent I broke the clearing the previous text bits. So you either end up overlaying text across itself or having a nasty flashing clear cycle.
 - Mode 0 and 1 are pretty much there, but nothing other than that and no multimode stuff.
@@ -24,6 +24,7 @@ This is very incomplete, before we go through what IS working, let's talk about 
 - It'll build a working cartridge
 - Works on any system that can run SDCC (i've tested with 4.5.0), sjasmplus (1.18.2), sdasz80 (02.00) and sdar (2.38).
 - Whilst i'm still keeping it as a TODO, i've added a very simple raster effect and changed the sample to use it
+- Sound and SFX should now be working ok.
 
 ## Prerequisites
 - python3
