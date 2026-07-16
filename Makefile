@@ -1,7 +1,7 @@
 # CeePCee v0.8alpha Amstrad CPC Plus and GX4000 SDK
 # 2026 Johnny Blanchard
 
-# Library Makefile
+# CeePCee V2 - Library Makefile
 #
 # Builds:
 #   lib/crt0.rel      - CRT0 object (linked into every game)
@@ -15,6 +15,7 @@
 SDCC    := sdcc
 SDAS    := sdasz80
 SDAR    := sdar
+SJASMPLUS := sjasmplus
 
 CFLAGS  := -mz80 --no-std-crt0 --sdcccall 1 -I include
 ASFLAGS := -plosgff
@@ -23,7 +24,7 @@ LIB_DIR := lib
 SRC_DIR := src
 BUILD   := build
 
-# Source files (assembly modules)
+# Source files
 ASM_SRCS := \
     $(SRC_DIR)/cpc_init.s \
     $(SRC_DIR)/cpc_gfx.s \
@@ -36,8 +37,13 @@ ASM_SRCS := \
     $(SRC_DIR)/cpc_scroll.s \
     $(SRC_DIR)/cpc_raster.s
 
+C_SRCS := \
+    $(SRC_DIR)/cpc_raster_gradient.c
+
 # Object files
 ASM_RELS := $(patsubst $(SRC_DIR)/%.s, $(BUILD)/%.rel, $(ASM_SRCS))
+C_RELS   := $(patsubst $(SRC_DIR)/%.c, $(BUILD)/%.rel, $(C_SRCS))
+ALL_RELS := $(ASM_RELS) $(C_RELS)
 
 CRT0_REL := $(LIB_DIR)/crt0.rel
 LIBRARY  := $(LIB_DIR)/ceepcee.lib
@@ -66,8 +72,12 @@ $(CRT0_REL): $(SRC_DIR)/crt0/crt0_gx4000.s | $(LIB_DIR)
 $(BUILD)/%.rel: $(SRC_DIR)/%.s | $(BUILD)
 	$(SDAS) $(ASFLAGS) -o $@ $<
 
+# Compile library C modules
+$(BUILD)/%.rel: $(SRC_DIR)/%.c | $(BUILD)
+	$(SDCC) $(CFLAGS) -c -o $@ $<
+
 # Archive into library
-$(LIBRARY): $(ASM_RELS) | $(LIB_DIR)
+$(LIBRARY): $(ALL_RELS) | $(LIB_DIR)
 	$(SDAR) -rc $@ $^
 
 clean:

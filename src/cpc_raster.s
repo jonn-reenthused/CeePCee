@@ -102,32 +102,35 @@ _cpc_raster_disable::
 ; __cpc_raster_arm()
 ; Currently unused - placeholder for future programmable raster use.
 ; Simple HALT-based approach is used instead.
-;==============================================================================
+;===============================================================================
 __cpc_raster_arm::
     ret
 
 ;==============================================================================
 ; __cpc_raster_apply()
-; Call after HALT for raster interrupt. Applies colors and waits for vsync.
-;==============================================================================
+; Called from _cpc_vblank_wait() at the top of each frame.
+; Applies the raster program by reprogramming the ASIC palette at each entry line.
+;===============================================================================
 __cpc_raster_apply::
     push    af
     push    bc
     push    de
     push    hl
     push    ix
-    
-    ; Check if enabled
+
+    ; Check if a raster program is active
     ld      a, (__cpc_raster_enabled)
     or      a
-    jp      Z, __ra_done
-    
-    ; ASIC is unlocked by the boot stub; re-sending the sequence can re-lock it.
-    ; Wait for interrupt (start of visible frame)
-    halt
-    
-    ; defs 20 - delay to get past border (like raster1b)
-    ; Use defs-style padding: 20 bytes = 5 JP instructions or custom
+    jp      z, __ra_done
+
+    ; Wait out the top border so the first entry's line 0 lands at the
+    ; top of the visible display. With the default CRTC this is 48 scanlines
+    ; (VSYNC ends at line 256, total = 304 lines, visible = 200 lines).
+    di                              ; palette timing must be exact
+    ld      a, #48
+    call    __ra_wait_lines
+
+    ; Small delay to get past the top border / HSYNC jitter (matching docs examples)
     nop
     nop
     nop
@@ -148,60 +151,137 @@ __cpc_raster_apply::
     nop
     nop
     nop
-    
-    ; Page in ASIC registers at &4000-&7fff
+
+    ; Page in ASIC registers at &4000-&7FFF
     ld      bc, #0x7FB8
     out     (c), c
-    
-    ; DE = ASIC palette address for pen 0
-    ld      de, #0x6400
-    
-    ; HL = pointer to first entry in __cpc_raster_table
+
+    ; HL = pointer to first entry
     ; Each entry: line(1), pen(1), colour_lo(1), colour_hi(1)
     ld      hl, #__cpc_raster_table
-    
-    ; B = number of entries
     ld      a, (__cpc_raster_count)
     ld      b, a
-    
+
     or      a
     jr      z, __ra_pageout
-    
+
+    ld      c, #0                   ; current scan line
+
 __ra_loop:
-    ; Skip line byte
-    inc     hl              ; skip line
-    ; Read pen byte and compute palette address $6400 + pen*2
+    ld      e, (hl)                 ; E = target scan line
+    inc     hl
+    ld      a, e
+    sub     c                       ; A = lines to wait since last entry
+    push    bc                      ; preserve entry count (B) and current line (C)
+    call    __ra_wait_lines
+    pop     bc
+    ld      c, e                    ; current line = target line
+
+    ; Read pen and compute ASIC palette address $6400 + pen*2
     ld      a, (hl)
     inc     hl
-    add     a, a            ; A = pen * 2
+    add     a, a                    ; A = pen * 2
     ld      d, #0x64
-    ld      e, a            ; DE = $6400 + pen*2
-    ; Read colour lo+hi and write to the selected pen
-    ld      a, (hl)
+    ld      e, a                    ; DE = $6400 + pen*2
+
+    ; Write the 16-bit CPC+ colour
+    ld      a, (hl)                 ; low byte
     ld      (de), a
     inc     hl
     inc     e
-    ld      a, (hl)
+    ld      a, (hl)                 ; high byte
     ld      (de), a
-    inc     hl              ; advance to next entry
-    
-    nop
-    nop
-    
-    dec     b
-    jp      nz, __ra_loop
-    
-    ; Page out ASIC registers
+    inc     hl
+
+    djnz    __ra_loop
+
 __ra_pageout:
+    ; Page out ASIC registers
     ld      bc, #0x7FA0
     out     (c), c
-    
+
+    ei
+
 __ra_done:
     pop     ix
     pop     hl
     pop     de
     pop     bc
     pop     af
+    ret
+
+;==============================================================================
+; __ra_wait_lines
+; Wait A scan lines (A * ~64us) using a tight NOP loop.
+; Clobbers A, B and flags.
+;===============================================================================
+__ra_wait_lines:
+    or      a
+    ret     z
+    ld      b, a
+__ra_wl_loop:
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    djnz    __ra_wl_loop
     ret
 
 ; __cpc_raster_table is defined in cpc_init.s ABS area

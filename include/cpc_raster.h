@@ -36,6 +36,7 @@ typedef struct {
  * count:   number of entries (max CPC_RASTER_MAX_ENTRIES).
  */
 void cpc_raster_set_program(const cpc_raster_entry_t *entries, uint8_t count);
+void cpc_raster_set_gradient(uint16_t start, uint16_t end, uint8_t count);
 
 /*
  * cpc_raster_disable()

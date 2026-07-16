@@ -12,6 +12,9 @@
 ;   _cpc_init          - public API: cpc_init(mode), called by user
 ;   _cpc_vblank_wait   - wait for vertical blank
 ;
+; All register sequences taken from proven hardware code in
+; ../runtime/hw/gx4000_api.asm and verified against commercial cartridge
+; disassemblies in docs/.
 ;
 
     .module cpc_init
@@ -21,6 +24,7 @@
     .globl  __cpc_asic_unlock
     .globl  __cpc_pagein_asic
     .globl  __cpc_pageout_asic
+    .globl  __cpc_raster_apply
     .globl  _cpc_text_use_firmware_font
 
 ;==============================================================================
@@ -173,9 +177,8 @@ _cpc_init::
 
 ;------------------------------------------------------------------------------
 ; _cpc_vblank_wait()
-; Wait for the next 50Hz frame by polling the frame counter.
-; The boot stub's IM1 handler increments __cpc_frame_count once per frame
-; (6 interrupts = 1 frame on the CPC). This also services input and music.
+; Wait for the end of VSYNC to mark the top of the next frame, then apply the
+; active raster program before polling input and ticking music.
 ;------------------------------------------------------------------------------
 _cpc_vblank_wait::
     push    af
@@ -183,15 +186,23 @@ _cpc_vblank_wait::
     push    de
     push    hl
 
-    ld      hl, (__cpc_frame_count)
+    ; PPI port B bit 0 = VSYNC state (1 = active)
+    ; Wait for the end of the VSYNC pulse so the raster routine can
+    ; count the top-border scanlines and reach the top of the visible frame.
+    ld      bc, #0xF500
 00001$:
-    halt                            ; wait for next interrupt
-    ld      de, (__cpc_frame_count)
-    or      a
-    sbc     hl, de
-    jr      z, 00001$               ; loop until frame counter changes
+    in      a, (c)
+    rra
+    jr      nc, 00001$              ; wait until VSYNC goes active
+00002$:
+    in      a, (c)
+    rra
+    jr      c, 00002$               ; wait until VSYNC goes inactive (end of VSYNC)
 
-    ; Poll input and tick music after a new frame
+    ; Apply any active copper/raster program for this frame
+    call    __cpc_raster_apply
+
+    ; Poll input and tick music after a new frame begins
     call    _cpc_input_poll
     call    _cpc_music_tick
 
