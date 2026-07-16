@@ -49,9 +49,8 @@ void main(void) {
     cpc_music_play(FURELIS3_periods, FURELIS3_volumes, FURELIS3_STEPS);
 
     while (1) {
-        cpc_vblank_wait();
-        cpc_music_tick();
-        
+        cpc_vblank_wait();  /* music tick is handled inside vblank wait */
+
         frame++;
         if ((frame & 0x3F) == 0) {
             m = *mixer;

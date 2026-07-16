@@ -44,6 +44,11 @@
     .globl  _cpc_music_tick
     .globl  _cpc_music_stop
     .globl  _cpc_music_set_tempo
+    .globl  _cpc_sound_dma_play
+    .globl  _cpc_sound_dma_stop
+    .globl  __cpc_asic_unlock
+    .globl  __cpc_pagein_asic
+    .globl  __cpc_pageout_asic
     .globl  __cpc_music_tempo
     .globl  __cpc_music_counter
     .globl  __cpc_music_index
@@ -65,9 +70,10 @@ __sc_music_vol_ptr::  .ds 2     ; scratch: volumes ptr during tick
 ;==============================================================================
 ; __psg_write  --  INTERNAL: write one PSG register
 ; Entry: E = register (0..13), D = value
-; Corrupts: A, BC
+; Corrupts: A, preserves BC and DE
 ;==============================================================================
 __psg_write::
+    push    bc                  ; preserve BC for callers
     ; --- select register ---
     ld      a, e
     ld      bc, #0xF4FF         ; PPI port A (data bus)
@@ -86,6 +92,7 @@ __psg_write::
     out     (c), a
     xor     a                   ; inactive
     out     (c), a
+    pop     bc
     ret
 
 ;==============================================================================
@@ -99,11 +106,10 @@ _cpc_sound_write::
 
 ;==============================================================================
 ; _cpc_sound_tone(channel, period, volume)
-; sdcccall(1): channel in A (0-2), period in HL (H=coarse L=fine), volume on stack
-; Stack after push ix,bc,de,hl (8 bytes) + ret (2) = vol at sp+10
+; sdcccall(1): channel in A (0-2), period in DE (D=coarse E=fine),
+;              volume pushed as 1 byte (callee cleans it up)
 ;==============================================================================
 _cpc_sound_tone::
-    ; sdcccall(1): A=channel(0-2), DE=period(D=coarse E=fine), stack: [ret][vol]
     push    ix
     push    bc
     push    de                  ; save DE (period)
@@ -122,7 +128,7 @@ _cpc_sound_tone::
 
     ; write fine period: R(base) = E
     ld      e, c
-    ld      d, 0(ix)              ; D = saved E = fine period
+    ld      d, 0(ix)            ; D = saved E = fine period
     call    __psg_write
 
     ; write coarse period: R(base+1) = D & $0F
@@ -137,17 +143,38 @@ _cpc_sound_tone::
 
     ; write volume: R(8+channel)
     ld      a, 8(ix)            ; volume from stack
-    and     a
-    jr      nz, __st_vol_ok
-    ld      a, #1               ; minimum volume instead of 0
-__st_vol_ok:
-    and     #0x1F
+    and     #0x1F               ; keep direct level or envelope flag (bit 4)
     ld      d, a
     ld      a, b
     add     a, #8
     ld      e, a
     call    __psg_write
-__st_done:
+
+    ; update mixer: enable tone, disable noise for this channel
+    ld      a, (__psg_mixer_shadow)
+    ld      c, a
+    ld      a, b
+    or      a
+    jr      nz, __st_ch1_or_2
+    res     0, c                ; tone A on
+    set     3, c                ; noise A off
+    jr      __st_mixer_write
+__st_ch1_or_2:
+    cp      #1
+    jr      nz, __st_ch2
+    res     1, c                ; tone B on
+    set     4, c                ; noise B off
+    jr      __st_mixer_write
+__st_ch2:
+    res     2, c                ; tone C on
+    set     5, c                ; noise C off
+__st_mixer_write:
+    ld      a, c
+    ld      (__psg_mixer_shadow), a
+    ld      d, a
+    ld      e, #7
+    call    __psg_write
+
     pop     de
     pop     bc
     pop     ix
@@ -246,7 +273,7 @@ _cpc_sound_silence::
 
 ;==============================================================================
 ; _cpc_sound_silence_all()
-; Mute all channels by setting volumes to 0. Keep tones enabled (0xC0).
+; Mute all channels by setting volumes to 0. Keep tones enabled (0x38).
 ;==============================================================================
 _cpc_sound_silence_all::
     push    de
@@ -336,33 +363,28 @@ _cpc_music_tick::
     xor     a
     ld      (__cpc_music_counter), a
     ld      a, (__cpc_music_index)
-    ld      b, a                ; B = step index
-
-    ; --- compute pointer into periods: &periods[step * 3] (uint16_t, so *6 bytes) ---
-    ld      hl, (__cpc_music_periods)
-    ld      a, b
-    add     a, a                ; *2
-    add     a, b                ; *3
-    add     a, a                ; *6
-    ld      e, a
-    ld      d, #0
-    add     hl, de              ; HL = &periods[step*3]
-
-    ; --- compute pointer into volumes: &volumes[step * 3] (uint8_t, so *3 bytes) ---
-    ld      de, (__cpc_music_volumes)
-    ld      a, b
-    add     a, a                ; *2
-    add     a, b                ; *3
     ld      c, a
-    ld      b, #0
-    ex      de, hl              ; HL = volumes base, DE = periods ptr
-    add     hl, bc              ; HL = &volumes[step*3]
-    ex      de, hl              ; HL = periods ptr, DE = volumes ptr
+    ld      b, #0               ; BC = step index (16-bit)
 
-    ; HL = &periods[step*3], DE = &volumes[step*3]
-    ; Store pointers for channel loop
-    ld      (__sc_music_step_ptr), hl  ; save periods ptr
-    ld      (__sc_music_vol_ptr), de   ; save volumes ptr
+    ; --- compute step*3 in HL ---
+    ld      h, b
+    ld      l, c                ; HL = step
+    add     hl, hl              ; HL = step*2
+    add     hl, bc              ; HL = step*3
+    push    hl                  ; save step*3 for period offset
+
+    ; --- volumes pointer = volumes_base + step*3 ---
+    ld      de, (__cpc_music_volumes)
+    add     hl, de              ; HL = &volumes[step*3]
+    ld      (__sc_music_vol_ptr), hl
+
+    ; --- periods pointer = periods_base + step*6 ---
+    pop     hl                  ; HL = step*3
+    add     hl, hl              ; HL = step*6
+    ld      de, (__cpc_music_periods)
+    add     hl, de              ; HL = &periods[step*3]
+    ld      (__sc_music_step_ptr), hl
+
     ld      b, #0               ; B = channel (0,1,2)
 
 __mt_ch_loop:
@@ -441,3 +463,97 @@ _cpc_music_stop::
     xor     a
     ld      (__cpc_music_steps), a
     jp      _cpc_sound_silence_all
+
+;==============================================================================
+; _cpc_sound_dma_play(program, channel)
+; Play a CPC+ DMA sound list.
+; Entry (sdcccall(1)): HL = pointer to DMA program (must be 16-bit aligned),
+;                      channel = 1 byte pushed on stack (second argument).
+; The program is expected to be a sequence of CPC+ DMA opcodes.
+; Prescaler is fixed at 63 so that one PAUSE count equals one HSYNC (~64us).
+;==============================================================================
+_cpc_sound_dma_play::
+    push    ix
+    ld      ix, #0
+    add     ix, sp
+    push    bc
+    push    de
+    push    hl
+
+    ; channel is the 8-bit argument pushed on the stack by the compiler
+    ; (sdcccall(1): first 16-bit arg in HL, second 8-bit arg on stack)
+    ld      a, 4(ix)            ; channel byte
+    and     #0x03
+    cp      #0x03
+    jr      c, __sdp_channel_ok
+    xor     a
+__sdp_channel_ok:
+    ld      b, a                ; B = channel
+
+    ; Ensure ASIC is unlocked and page in ASIC registers
+    call    __cpc_asic_unlock
+    di
+    call    __cpc_pagein_asic
+
+    ; DE = 0x6C00 + channel * 4
+    ld      a, b
+    add     a, a
+    add     a, a                ; A = channel * 4
+    ld      e, a
+    ld      d, #0x6C
+
+    ; Write DMA channel pointer (low then high)
+    ld      a, l
+    ld      (de), a
+    inc     e
+    ld      a, h
+    ld      (de), a
+    inc     e
+
+    ; Prescaler = 63: each PAUSE count is one HSYNC scanline
+    ld      a, #63
+    ld      (de), a
+
+    ; Compute enable mask: 1 << channel
+    ld      a, b
+    ld      b, #1
+__sdp_mask_loop:
+    or      a
+    jr      z, __sdp_mask_done
+    sla     b
+    dec     a
+    jr      __sdp_mask_loop
+__sdp_mask_done:
+    ld      a, b
+
+    ; Write DCSR at 0x6C0F to enable this channel
+    ld      (0x6C0F), a
+
+    call    __cpc_pageout_asic
+    ei
+
+    pop     hl
+    pop     de
+    pop     bc
+    pop     ix
+    pop     hl                  ; return address
+    inc     sp                  ; discard channel byte
+    jp      (hl)
+
+;==============================================================================
+; _cpc_sound_dma_stop()
+; Disable all DMA sound channels.
+;==============================================================================
+_cpc_sound_dma_stop::
+    push    af
+    push    bc
+    call    __cpc_asic_unlock
+    di
+    call    __cpc_pagein_asic
+    xor     a
+    ld      (0x6C0F), a
+    call    __cpc_pageout_asic
+    ei
+    pop     bc
+    pop     af
+    ret

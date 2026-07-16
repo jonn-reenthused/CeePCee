@@ -90,14 +90,9 @@ _cpc_runtime_init::
     ld      bc, #0x003F
     ldir
 
-    ; Initialize PSG mixer to 0x38: tones ON, noise OFF, I/O port A INPUT
-    ; Bits: 7-6=I/O(00=input - REQUIRED for keyboard/joystick reads via R14),
-    ;       5-3=noise(111=off), 2-0=tone(000=on)
-    ld      a, #0x38
-    ld      (__psg_mixer_shadow), a
-    ld      d, a
-    ld      e, #7               ; R7 = mixer
-    call    __psg_silence_init
+    ; Silence all PSG channels and set mixer to 0x38: tones ON, noise OFF,
+    ; I/O port A INPUT. This prevents garbage volumes from producing noise.
+    call    _cpc_sound_silence_all
 
     ; Default values
     xor     a

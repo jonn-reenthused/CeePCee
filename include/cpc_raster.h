@@ -36,12 +36,20 @@ typedef struct {
  * count:   number of entries (max CPC_RASTER_MAX_ENTRIES).
  */
 void cpc_raster_set_program(const cpc_raster_entry_t *entries, uint8_t count);
-void cpc_raster_set_gradient(uint16_t start, uint16_t end, uint8_t count);
 
 /*
  * cpc_raster_disable()
  * Remove the active raster program.
  */
 void cpc_raster_disable(void);
+
+/*
+ * cpc_raster_set_gradient(start, end, count)
+ * Quickly generate a vertical gradient from start to end colour.
+ * Both colours are in CPC+ 0x0GRB format. count is the number of
+ * raster bands (max CPC_RASTER_MAX_ENTRIES); more bands = smoother.
+ * The gradient is applied to pen 0 (background).
+ */
+void cpc_raster_set_gradient(uint16_t start, uint16_t end, uint8_t count);
 
 #endif

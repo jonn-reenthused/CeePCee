@@ -9,8 +9,8 @@ CeePCee v0.8alpha Amstrad CPC Plus and GX4000 SDK
 
 /*
  * Für Elise via MIDI conversion
- * Auto-converted from FURELIS3.mid using midi_to_psg.py
- * 200 steps, tempo=6 (~8 steps/sec)
+ * Auto-converted from furelise.mid using midi_to_psg.py
+ * 255 steps, tempo=6 (~8 steps/sec)
  */
 
 void main(void) {
@@ -20,7 +20,6 @@ void main(void) {
     cpc_music_play(FURELIS3_periods, FURELIS3_volumes, FURELIS3_STEPS);
 
     while (1) {
-        cpc_vblank_wait();
-        cpc_music_tick();
+        cpc_vblank_wait();  /* music tick is handled inside vblank wait */
     }
 }

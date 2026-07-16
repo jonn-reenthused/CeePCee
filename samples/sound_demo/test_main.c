@@ -43,8 +43,7 @@ void main(void) {
     cpc_text_print_at(0, 5, "Playing...");
 
     while (1) {
-        cpc_vblank_wait();
-        cpc_music_tick();
+        cpc_vblank_wait();  /* music tick is handled inside vblank wait */
         
         frame++;
         if ((frame & 0x3F) == 0) {  /* Update every 64 frames (~1.3 sec) */

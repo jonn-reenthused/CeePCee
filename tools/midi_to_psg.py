@@ -25,7 +25,7 @@ Options:
   --loop             Find loop point (not yet implemented)
   --verbose          Print conversion details
 
-PSG clock: 1 MHz. Period = 62500 / (2 * freq_hz).
+PSG clock: 1 MHz. Period = 1,000,000 / (16 * freq_hz).
 CPC target framerate: 50 Hz.
 """
 
@@ -237,7 +237,11 @@ def get_tempo_map(midi):
     for track in midi['tracks']:
         for ev in track:
             if ev[1] == 'tempo':
-                tempo_map.append((ev[0], ev[3]))
+                if ev[0] == 0:
+                    # An explicit tempo at tick 0 overrides the default.
+                    tempo_map[0] = (0, ev[3])
+                else:
+                    tempo_map.append((ev[0], ev[3]))
     tempo_map.sort(key=lambda x: x[0])
     return tempo_map
 
@@ -336,8 +340,63 @@ def get_total_ticks(midi):
 # Output C header
 # ---------------------------------------------------------------------------
 
+def build_dma_program(step_data, num_steps, frames_per_step,
+                      prescaler=63, hsync_per_frame=312):
+    """Build a CPC+ DMA sound list from quantized step data.
+
+    Prescaler 63 means one PAUSE count is one HSYNC (~64us). One frame is
+    approximately 312 HSYNCs. The DMA list updates all three PSG channels per
+    step and loops (almost) forever.
+    """
+    def load(reg, val):
+        return 0x0000 | ((reg & 0x0F) << 8) | (val & 0xFF)
+    def pause(n):
+        return 0x1000 | (n & 0x0FFF)
+
+    program = []
+
+    # Set mixer to tones on, noise off, I/O port A input.
+    program.append(load(7, 0x38))
+
+    # Repeat the body 4095 times (effectively infinite for a demo).
+    program.append(0x2000 | 0x0FFF)
+
+    for step in range(num_steps):
+        loads_this_step = 0
+        for ch in range(3):
+            p, v = step_data[ch][step]
+            if p > 0:
+                program.append(load(ch * 2, p & 0xFF))
+                program.append(load(ch * 2 + 1, (p >> 8) & 0x0F))
+                loads_this_step += 2
+            if v > 0:
+                program.append(load(8 + ch, v & 0x0F))
+                loads_this_step += 1
+            elif p == 0:
+                # Silence: write volume 0
+                program.append(load(8 + ch, 0))
+                loads_this_step += 1
+
+        # Delay until the next step. Each load takes one HSYNC.
+        pause_count = frames_per_step * hsync_per_frame - loads_this_step
+        if pause_count < 0:
+            pause_count = 0
+        while pause_count > 0:
+            n = min(pause_count, 0x0FFF)
+            program.append(pause(n))
+            pause_count -= n
+
+    # Loop back to the first instruction after REPEAT. The LOOP opcode is
+    # 0x4001; when the repeat counter expires it falls through, so append
+    # a STOP (0x4020) after it.
+    program.append(0x4001)
+    program.append(0x4020)
+    return program
+
+
 def write_header(out_path, name, step_data, num_steps, frames_per_step,
-                 step_ticks, ticks_per_beat, src_channels, verbose):
+                 step_ticks, ticks_per_beat, src_channels, verbose,
+                 dma_program=None):
     uname = name.upper()
 
     periods_flat = []
@@ -388,6 +447,18 @@ def write_header(out_path, name, step_data, num_steps, frames_per_step,
             f.write(f"\n")
         f.write(f"}};\n\n")
 
+        if dma_program:
+            f.write(f"/* CPC+ DMA sound list for {name}; prescaler = 63 */\n")
+            f.write(f"#define {uname}_DMA_CHANNEL  0\n")
+            f.write(f"#define {uname}_DMA_PRESCALER  63\n")
+            f.write(f"static const uint16_t {name}_dma[{len(dma_program)}] = {{\n")
+            for i in range(0, len(dma_program), 8):
+                words = dma_program[i:i+8]
+                f.write("    ")
+                f.write(", ".join(f"0x{w:04X}" for w in words))
+                f.write(",\n")
+            f.write(f"}};\n\n")
+
         f.write(f"#endif /* {uname}_H */\n")
 
     if verbose:
@@ -416,6 +487,8 @@ def main():
                         help='Step size in MIDI ticks (default: ticks_per_beat/4 = 1 semiquaver)')
     parser.add_argument('--max-steps', type=int, default=255,
                         help='Max steps to output (default: 255, max for uint8_t steps arg)')
+    parser.add_argument('--dma',       action='store_true',
+                        help='Also emit a CPC+ DMA sound list in the header')
     parser.add_argument('--verbose',   action='store_true')
     args = parser.parse_args()
 
@@ -504,17 +577,26 @@ def main():
     if name[0].isdigit():
         name = 'song_' + name
 
+    # Build optional DMA sound list
+    dma_program = None
+    if args.dma:
+        dma_program = build_dma_program(step_data, num_steps, frames_per_step)
+
     # Write output
     write_header(args.output, name, step_data, num_steps, frames_per_step,
-                 step_ticks, tpb, src_channels, args.verbose)
+                 step_ticks, tpb, src_channels, args.verbose,
+                 dma_program=dma_program)
 
     print(f"Converted {args.input} -> {args.output}")
     print(f"  {num_steps} steps, tempo={frames_per_step} frames/step, "
           f"step={step_ticks} ticks")
     print(f"Usage in C:")
     print(f"  #include \"{os.path.basename(args.output)}\"")
-    print(f"  cpc_music_set_tempo({name.upper()}_TEMPO);")
-    print(f"  cpc_music_play({name}_periods, {name}_volumes, {name.upper()}_STEPS);")
+    if args.dma:
+        print(f"  cpc_sound_dma_play({name}_dma, {name.upper()}_DMA_CHANNEL);")
+    else:
+        print(f"  cpc_music_set_tempo({name.upper()}_TEMPO);")
+        print(f"  cpc_music_play({name}_periods, {name}_volumes, {name.upper()}_STEPS);")
 
 if __name__ == '__main__':
     main()

@@ -1,8 +1,6 @@
 /*
 CeePCee v0.8alpha Amstrad CPC Plus and GX4000 SDK
 2026 Johnny Blanchard
-
-Sound Effects sample
 */
 
 #include "cpc_init.h"
@@ -16,7 +14,7 @@ static void sfx_beep(void) {
     cpc_sound_write(0, 0x47);      /* R0 = fine period A */
     cpc_sound_write(1, 0x00);      /* R1 = coarse period A */
     cpc_sound_write(8, 15);        /* R8 = volume A */
-    cpc_sound_mixer(0xC0);         /* tones on */
+    cpc_sound_mixer(0x38);         /* tones on, noise off */
 }
 
 static void sfx_laser(void) {
@@ -24,12 +22,12 @@ static void sfx_laser(void) {
     cpc_sound_write(2, 0x47);      /* R2 = fine period B */
     cpc_sound_write(3, 0x00);      /* R3 = coarse period B */
     cpc_sound_write(9, 12);        /* R9 = volume B */
-    cpc_sound_mixer(0xC0);         /* tones on */
+    cpc_sound_mixer(0x38);         /* tones on, noise off */
 }
 
 static void sfx_explosion(void) {
     cpc_sound_noise(20);
-    cpc_sound_mixer(0xC0 & ~SOUND_NOISE_A);  /* noise on A */
+    cpc_sound_mixer(0x38 & ~SOUND_NOISE_A);  /* noise on A, tones on */
     cpc_sound_volume(SOUND_CH_A, 15);
 }
 
@@ -37,13 +35,13 @@ static void sfx_chime(void) {
     /* Channel A: NOTE_E5=190(0xBE), Channel B: NOTE_B5=63(0x3F) */
     cpc_sound_write(0, 0xBE); cpc_sound_write(1, 0x00); cpc_sound_write(8, 10);
     cpc_sound_write(2, 0x3F); cpc_sound_write(3, 0x00); cpc_sound_write(9, 8);
-    cpc_sound_mixer(0xC0);
+    cpc_sound_mixer(0x38);
 }
 
 static void sfx_clunk(void) {
     /* Channel C: NOTE_C3=0x1DE */
     cpc_sound_write(4, 0xDE); cpc_sound_write(5, 0x01); cpc_sound_write(10, 12);
-    cpc_sound_mixer(0xC0);
+    cpc_sound_mixer(0x38);
 }
 
 /* Write byte to screen RAM at $C000 (top-left is $C000) */
@@ -64,7 +62,7 @@ static void sfx_update(void) {
         if (sfx_channels & 0x02) cpc_sound_write(9, 0);
         if (sfx_channels & 0x04) cpc_sound_write(10, 0);
         /* Reset mixer to tones only, no noise */
-        cpc_sound_mixer(0xC0);
+        cpc_sound_mixer(0x38);
         sfx_channels = 0;
     }
 }
@@ -79,7 +77,7 @@ void main(void) {
     
     cpc_init(CPC_MODE_0);
     cpc_sound_silence_all();
-    cpc_sound_mixer(0xC0);  /* ensure tones enabled */
+    cpc_sound_mixer(0x38);  /* tones enabled, noise disabled */
     
     /* Clear first 16 bytes of screen to black */
     uint16_t i;

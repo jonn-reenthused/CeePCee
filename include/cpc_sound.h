@@ -120,7 +120,7 @@ void cpc_sound_noise(uint8_t period);
  * cpc_sound_mixer(mask)
  * Directly set the PSG mixer register.
  * Use SOUND_TONE_x / SOUND_NOISE_x bit constants (0 = enabled).
- * Bits 6-7 (I/O direction) are always set to 1 automatically.
+ * Bits 6-7 (I/O direction) are always cleared (input) automatically.
  */
 void cpc_sound_mixer(uint8_t mask);
 
@@ -142,7 +142,8 @@ void cpc_sound_envelope(uint8_t shape, uint16_t period);
 
 /*
  * cpc_sound_silence(channel)
- * Set volume to 0 and disable tone+noise for one channel.
+ * Set volume to 0 for one channel. The mixer is left unchanged,
+ * so tone/noise enables remain as previously configured.
  */
 void cpc_sound_silence(uint8_t channel);
 
@@ -151,6 +152,22 @@ void cpc_sound_silence(uint8_t channel);
  * Mute all channels and reset the mixer.
  */
 void cpc_sound_silence_all(void);
+
+/*
+ * CPC+ DMA sound list playback.
+ * Each DMA opcode is a 16-bit little-endian value:
+ *   0x0RDD  - LOAD R, D  (write data D to PSG register R)
+ *   0x1NNN  - PAUSE for N prescaled ticks
+ *   0x2NNN  - REPEAT N times from the next opcode
+ *   0x4000  - NOP (one HSYNC idle)
+ *   0x4001  - LOOP back to the opcode after the matching REPEAT
+ *   0x4010  - interrupt the CPU
+ *   0x4020  - STOP the DMA channel
+ * cpc_sound_dma_play() uses a fixed prescaler of 63, so a PAUSE count of N
+ * is approximately N HSYNCs (one frame is ~312 HSYNCs).
+ */
+void cpc_sound_dma_play(const uint16_t *program, uint8_t channel) __sdcccall(1);
+void cpc_sound_dma_stop(void);
 
 /*===========================================================================
  * Music sequencer

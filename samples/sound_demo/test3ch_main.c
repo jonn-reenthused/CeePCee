@@ -41,7 +41,6 @@ void main(void) {
     cpc_music_play(test_periods, test_volumes, 6);
 
     while (1) {
-        cpc_vblank_wait();
-        cpc_music_tick();
+        cpc_vblank_wait();  /* music tick is handled inside vblank wait */
     }
 }
